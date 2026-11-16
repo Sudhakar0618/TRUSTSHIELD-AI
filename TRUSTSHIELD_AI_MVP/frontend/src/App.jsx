@@ -1,5 +1,4 @@
-
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import "./style.css";
 
 const API = "http://127.0.0.1:8000";
@@ -10,25 +9,45 @@ export default function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [history, setHistory] = useState([]);
+  const [analytics, setAnalytics] = useState({
+    total_scans: 0,
+    high_risk_count: 0,
+    medium_risk_count: 0,
+    low_risk_count: 0,
+    average_risk_score: 0,
+  });
 
-  async function loadHistory() {
+  // Load analytics & history from backend
+  async function loadDashboardData() {
     try {
-      const response = await fetch(`${API}/api/history`);
-      if (!response.ok) throw new Error("History unavailable");
+      const [historyRes, analyticsRes] = await Promise.all([
+        fetch(`${API}/api/history`),
+        fetch(`${API}/api/analytics`),
+      ]);
 
-      const data = await response.json();
-      setHistory(data.history || []);
+      if (historyRes.ok) {
+        const historyData = await historyRes.json();
+        setHistory(historyData.history || []);
+      }
+
+      if (analyticsRes.ok) {
+        const analyticsData = await analyticsRes.json();
+        setAnalytics(analyticsData);
+      }
     } catch (err) {
-      console.error("Could not load scan history:", err);
+      console.error("Could not load dashboard data:", err);
     }
   }
 
   useEffect(() => {
-    loadHistory();
+    loadDashboardData();
   }, []);
 
+  // Handle URL scanning
   async function scan(e) {
     e.preventDefault();
+    if (!url.trim()) return;
+
     setResult(null);
     setError("");
     setLoading(true);
@@ -37,242 +56,187 @@ export default function App() {
       const response = await fetch(`${API}/api/scan`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url })
+        body: JSON.stringify({ url: url.trim() }),
       });
 
-      const data = await response.json();
-
       if (!response.ok) {
-        throw new Error(
-          data.detail?.[0]?.msg ||
-          "Please enter a valid complete URL."
-        );
+        const errData = await response.json();
+        throw new Error(errData.detail?.[0]?.msg || "Failed to scan URL");
       }
 
+      const data = await response.json();
       setResult(data);
-      await loadHistory();
+      loadDashboardData(); // Refresh history and analytics stats
     } catch (err) {
-      setError(
-        err.message ||
-        "Could not reach the backend. Check that it is running."
-      );
+      setError(err.message || "Could not connect to backend server.");
     } finally {
       setLoading(false);
     }
   }
 
-  const totalScans = history.length;
-
-  const highRisk = history.filter(
-    item => item.risk_level === "High"
-  ).length;
-
-  const mediumRisk = history.filter(
-    item => item.risk_level === "Medium"
-  ).length;
-
-  const lowRisk = history.filter(
-    item => item.risk_level === "Low"
-  ).length;
+  const getRiskBadgeClass = (level) => {
+    if (level === "High") return "badge high-risk";
+    if (level === "Medium") return "badge medium-risk";
+    return "badge low-risk";
+  };
 
   return (
-    <main className="page">
-
-      <nav>
-        <div className="brand">
-          ✦ TRUSTSHIELD <b>AI</b>
+    <div className="dashboard-container">
+      {/* Header Banner */}
+      <header className="header">
+        <div className="logo-brand">
+          <span className="shield-icon">🛡️</span>
+          <div>
+            <h1>TRUSTSHIELD AI</h1>
+            <p className="tagline">Next-Gen AI Phishing & Malicious Web Threat Engine</p>
+          </div>
         </div>
-        <span>URL SECURITY SCANNER · MVP</span>
-      </nav>
+      </header>
 
-      <section className="hero">
-
-        <div className="eyebrow">
-          YOUR FIRST LINE OF DIGITAL DEFENCE
+      {/* Analytics Counter Grid */}
+      <section className="analytics-grid">
+        <div className="stat-card">
+          <span className="stat-label">Total Scans</span>
+          <span className="stat-value">{analytics.total_scans}</span>
         </div>
+        <div className="stat-card high">
+          <span className="stat-label">High Risk Threats</span>
+          <span className="stat-value">{analytics.high_risk_count}</span>
+        </div>
+        <div className="stat-card medium">
+          <span className="stat-label">Medium Risk Warnings</span>
+          <span className="stat-value">{analytics.medium_risk_count}</span>
+        </div>
+        <div className="stat-card low">
+          <span className="stat-label">Clean / Safe Websites</span>
+          <span className="stat-value">{analytics.low_risk_count}</span>
+        </div>
+        <div className="stat-card">
+          <span className="stat-label">Avg Threat Score</span>
+          <span className="stat-value">{analytics.average_risk_score} / 100</span>
+        </div>
+      </section>
 
-        <h1>
-          Spot risky links.
-          <br />
-          <em>Browse smarter.</em>
-        </h1>
-
-        <p className="intro">
-          Scan suspicious URLs and identify potential
-          online threats using intelligent security checks.
-        </p>
-
-        {/* DASHBOARD STATISTICS */}
-
-        <section className="stats-grid">
-
-          <div className="stat-card">
-            <span>Total Scans</span>
-            <h2>{totalScans}</h2>
-            <small>Recorded scans</small>
-          </div>
-
-          <div className="stat-card high-stat">
-            <span>High Risk</span>
-            <h2>{highRisk}</h2>
-            <small>Potential threats</small>
-          </div>
-
-          <div className="stat-card medium-stat">
-            <span>Medium Risk</span>
-            <h2>{mediumRisk}</h2>
-            <small>Suspicious URLs</small>
-          </div>
-
-          <div className="stat-card low-stat">
-            <span>Low Risk</span>
-            <h2>{lowRisk}</h2>
-            <small>Fewer warning signs</small>
-          </div>
-
-        </section>
-
-        <form onSubmit={scan} className="panel">
-
-          <label htmlFor="url">Website URL</label>
-
-          <div className="inputrow">
-
-            <input
-              id="url"
-              type="url"
-              required
-              placeholder="https://example.com"
-              value={url}
-              onChange={e => setUrl(e.target.value)}
-            />
-
-            <button disabled={loading}>
-              {loading ? "Checking..." : "Scan URL →"}
-            </button>
-
-          </div>
-
-          <small>
-            Enter a complete URL, including https:// or http://
-          </small>
-
+      {/* URL Scanner Form Section */}
+      <section className="scanner-section">
+        <h2>Inspect & Analyze URL</h2>
+        <form onSubmit={scan} className="scan-form">
+          <input
+            type="text"
+            placeholder="Enter web link to scan (e.g. http://paypal-verify-login.xyz)"
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            disabled={loading}
+            className="scan-input"
+          />
+          <button type="submit" disabled={loading} className="scan-button">
+            {loading ? "Analyzing..." : "Scan URL 🔍"}
+          </button>
         </form>
 
-        {error && (
-          <p className="error">{error}</p>
-        )}
+        {error && <div className="error-banner">⚠️ {error}</div>}
+      </section>
 
-        {/* SCAN RESULT */}
-
-        {result && (
-          <section className="panel result">
-
-            <div className="resulttop">
-
-              <div>
-                <div className="eyebrow">SCAN RESULT</div>
-                <h2>{result.risk_level} Risk</h2>
-              </div>
-
-              <div className={`score ${result.risk_level.toLowerCase()}`}>
-                {result.risk_score}
-                <small>/100</small>
-              </div>
-
+      {/* Detailed Scan Result Component */}
+      {result && (
+        <section className="result-section">
+          <div className="result-header">
+            <div>
+              <h3>Security Assessment Report</h3>
+              <p className="scanned-url">{result.url}</p>
             </div>
-
-            <p className="scanned">{result.url}</p>
-
-            <div className="google-status">
-              <strong>Google Safe Browsing</strong>
-              <span>
-                {result.google_safe_browsing?.status === "success"
-                  ? result.google_safe_browsing.is_malicious
-                    ? "⚠ Threat detected"
-                    : "✓ No known threat detected"
-                  : result.google_safe_browsing?.status === "not_configured"
-                    ? "Not configured"
-                    : "Service unavailable"}
-              </span>
+            <div className={getRiskBadgeClass(result.risk_level)}>
+              {result.risk_level.toUpperCase()} RISK
             </div>
+          </div>
 
-            <h3>Signals detected</h3>
+          <div className="risk-score-container">
+            <div className="score-meter">
+              <span className="score-number">{result.risk_score}</span>
+              <span className="score-max">/100</span>
+            </div>
+            <div className="score-bar-bg">
+              <div
+                className={`score-bar-fill ${result.risk_level.toLowerCase()}`}
+                style={{ width: `${result.risk_score}%` }}
+              ></div>
+            </div>
+          </div>
 
-            {result.indicators.length ? (
-              <ul>
-                {result.indicators.map((item, index) => (
-                  <li key={index}>
-                    <span>{item.name}</span>
-                    <b>+{item.points}</b>
+          {/* Google Safe Browsing status banner */}
+          <div className="safe-browsing-status">
+            <strong>Google Safe Browsing Check: </strong>
+            {result.google_safe_browsing.is_malicious ? (
+              <span className="text-danger">🚨 FLAGGED MALICIOUS</span>
+            ) : result.google_safe_browsing.status === "success" ? (
+              <span className="text-success">✅ Clean in Google Database</span>
+            ) : (
+              <span className="text-muted">ℹ️ Standalone Heuristic Scan</span>
+            )}
+          </div>
+
+          {/* Detailed Risk Indicators List */}
+          <div className="indicators-block">
+            <h4>Detected Security Indicators ({result.indicators.length})</h4>
+            {result.indicators.length === 0 ? (
+              <p className="no-indicators">✅ No suspicious security patterns detected for this URL.</p>
+            ) : (
+              <ul className="indicators-list">
+                {result.indicators.map((ind, i) => (
+                  <li key={i} className="indicator-item">
+                    <span className={`severity-tag ${(ind.severity || "medium").toLowerCase()}`}>
+                      {ind.severity || "Warning"}
+                    </span>
+                    <span className="indicator-name">{ind.name}</span>
+                    <span className="indicator-points">+{ind.points} Risk Pts</span>
                   </li>
                 ))}
               </ul>
-            ) : (
-              <p className="muted">
-                No warning signs detected by these checks.
-              </p>
             )}
-
-            <p className="muted disclaimer">
-              {result.disclaimer}
-            </p>
-
-          </section>
-        )}
-
-      </section>
-
-      {/* SCAN HISTORY */}
-
-      <section className="panel history-panel">
-
-        <div className="eyebrow">THREAT INTELLIGENCE</div>
-
-        <h2>Recent scans</h2>
-
-        {history.length === 0 ? (
-          <p className="muted">
-            No scan history available yet.
-          </p>
-        ) : (
-
-          <div className="history-list">
-
-            {history.map(item => (
-
-              <div
-                className={`history-item risk-${item.risk_level.toLowerCase()}`}
-                key={item.id}
-              >
-
-                <div>
-                  <strong>{item.risk_level} Risk</strong>
-                  <p>{item.url}</p>
-                  <small>
-                    {new Date(item.scanned_at).toLocaleString()}
-                  </small>
-                </div>
-
-                <span>{item.risk_score}/100</span>
-
-              </div>
-
-            ))}
-
           </div>
 
+          <p className="disclaimer">{result.disclaimer}</p>
+        </section>
+      )}
+
+      {/* History Feed Table */}
+      <section className="history-section">
+        <h2>Recent Scan Intelligence Log</h2>
+        {history.length === 0 ? (
+          <p className="no-history">No scan logs available yet. Try scanning a URL above!</p>
+        ) : (
+          <div className="history-table-container">
+            <table className="history-table">
+              <thead>
+                <tr>
+                  <th>Target URL</th>
+                  <th>Risk Score</th>
+                  <th>Risk Level</th>
+                  <th>Detected Threats</th>
+                  <th>Scanned Time</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((item) => (
+                  <tr key={item.id}>
+                    <td className="url-cell" title={item.url}>{item.url}</td>
+                    <td><strong>{item.risk_score} / 100</strong></td>
+                    <td>
+                      <span className={getRiskBadgeClass(item.risk_level)}>
+                        {item.risk_level}
+                      </span>
+                    </td>
+                    <td>{item.indicators.length} issue(s)</td>
+                    <td className="time-cell">
+                      {new Date(item.scanned_at).toLocaleString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-
       </section>
-
-      <footer>
-        <b>TRUSTSHIELD AI</b>
-        <span>
-          Educational prototype · Not a guarantee of website safety
-        </span>
-      </footer>
-
-    </main>
+    </div>
   );
 }
